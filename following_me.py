@@ -64,6 +64,19 @@ while running:
     # Render using class attributes
     pygame.draw.rect(screen, (0, 200, 255), (my_creature.x, my_creature.y, my_creature.size, my_creature.size))
     pygame.draw.rect(screen, (255, 200, 0), (food_creature.x, food_creature.y, food_creature.size, food_creature.size))
+    
+        # 1. Find the center of the creature
+    center_x = my_creature.x + (my_creature.size // 2)
+    center_y = my_creature.y + (my_creature.size // 2)
+
+    # 2. Calculate the end of the line (length of 30 pixels)
+    line_length = 30
+    end_x = center_x + math.cos(chase_angle) * line_length
+    end_y = center_y + math.sin(chase_angle) * line_length
+
+    # 3. Draw the line (White color)
+    pygame.draw.line(screen, (255, 255, 255), (center_x, center_y), (end_x, end_y), 3)
+
     for i in range(food_amnt):
         pygame.draw.rect(screen, (0, 255, 0), (food_list[i].x, food_list[i].y, food_list[i].size, food_list[i].size))
 
