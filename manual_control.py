@@ -32,7 +32,7 @@ while running:
 
     # 3. Render
     screen.fill((30, 30, 30))
-    
+   
     # Draw the creature    
     pygame.draw.rect(screen, (0, 200, 255), (creature_pos[0], creature_pos[1], creature_size, creature_size))
 
