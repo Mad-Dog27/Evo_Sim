@@ -9,7 +9,6 @@ my_font = pygame.font.Font(None, 50)
 
 food_amnt = random.randint(15, 20)
 food_list = []
-creature_testing_list = []  
 count = 0
 new_amount_x = 0
 new_amount_y = 0
@@ -48,9 +47,7 @@ class Moving_Creature:
         self.greed = 1
         self.score = 0
     
-    def update_view(self, view_w, view_h):
-        self.view_w = view_w
-        self.view_h = view_h
+
 
 def draw_rotated_ellipse(surface, color, center, w, h, angle):
     target_rect = pygame.Rect(0, 0, w * 2, h * 2)

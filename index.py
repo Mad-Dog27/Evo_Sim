@@ -18,7 +18,7 @@ chase_angle = 0 # Initialize this so the line doesn't crash on frame 1
 
 pygame.display.set_caption("Manual Control Mode")
 
-class Creature:
+class Food:
     def __init__(self, x, y, size):
         self.x = x
         self.y = y
@@ -38,8 +38,8 @@ class Moving_Creature:
         self.y = y
         self.size = size
         self.speed = speed
-        self.view_w = 350 
-        self.view_h = 150      
+        self.view_w = 100 
+        self.view_h = 100    
         self.random_move = 0.5  
         self.turn_speed = turn_speed
         self.angle = 0
@@ -48,6 +48,8 @@ class Moving_Creature:
         self.alive = 1
         self.greed = 1
         self.score = 0
+        self.patience = 0.8
+
     def update_view(self, view_w, view_h):
         self.view_w = view_w
         self.view_h = view_h
@@ -65,12 +67,120 @@ generation_count = 0
 current_speed = 5
 current_size = 40
 
+def checkColision():
+    for m in range(len(food_list) - 1, -1, -1):
+        curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
+        curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
+        distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
+        if distance < (my_creature.size // 2): 
+            my_creature.hunger += food_list[m].qnty
+            if my_creature.hunger > 100:
+                my_creature.hunger = 100
+            food_list.pop(m)
+
+def hunt():
+    global count, new_amount_x, new_amount_y, chase_angle, cx, cy
+    if len(food_list) > 0:
+        
+        checkColision()
+        
+        
+        if my_creature.hunger > 0:
+            my_creature.hunger -= my_creature.metabolism
+        if my_creature.hunger <= 0:
+            my_creature.alive = 0
+        else:
+            curr_prey_dist = 10000
+            curr_prey = None
+
+            if len(food_list) > 0:
+                if my_creature.hunger < my_creature.greed *100:
+                    curr_prey = findPrey(curr_prey,curr_prey_dist)
+                    
+
+                    if curr_prey is not None:
+                        x_dif = (food_list[curr_prey].x + (food_list[curr_prey].size // 2)) - cx
+                        y_dif = (food_list[curr_prey].y + (food_list[curr_prey].size // 2)) - cy
+                        chase_angle = math.atan2(y_dif, x_dif)
+                        my_creature.angle = chase_angle 
+                        my_creature.x += my_creature.speed * math.cos(chase_angle)
+                        my_creature.y += my_creature.speed * math.sin(chase_angle)
+                    else:
+                        if my_creature.patience > random.uniform(0,1):
+                            moveRandom(count, chase_angle, 1)
+                    
+                        else:
+                            moveRandom(count, chase_angle, 1)
+                else:
+                    moveRandom(count, chase_angle, 0)
+                    
+                        
+                checkBoundaries()
+                
+    return cx, cy, count 
+
+def findPrey(curr_prey, curr_prey_distance):
+    # We need cx, cy to do the math, and my_creature to see the angle/vision
+    global cx, cy 
+    
+    best_dist = curr_prey_distance # Use a local variable to track the closest
+    found_index = curr_prey      # This will store the index of the best food
+
+    for m in range(len(food_list)):
+        dx = (food_list[m].x + (food_list[m].size // 2)) - cx
+        dy = (food_list[m].y + (food_list[m].size // 2)) - cy
+                
+        # Rotated Math Point Check
+        cos_a = math.cos(-my_creature.angle)
+        sin_a = math.sin(-my_creature.angle)
+        rx = dx * cos_a - dy * sin_a
+        ry = dx * sin_a + dy * cos_a
+                        
+        # Ellipse check
+        if (rx**2 / my_creature.view_w**2) + (ry**2 / my_creature.view_h**2) <= 1:
+            distance = math.sqrt(dx**2 + dy**2)
+            if distance < best_dist:
+                best_dist = distance
+                found_index = m 
+                
+    return found_index
+
+def moveRandom(current_count, current_chase_angle, is_hungry):
+    # We need global access to the 'random direction' variables
+    global new_amount_x, new_amount_y, count, chase_angle
+    if is_hungry:
+        speed = my_creature.speed
+    else:
+        speed = my_creature.random_move * my_creature.speed
+    if current_count > 20:
+        # Choose a new random direction
+        new_amount_x = random.uniform(-1, 1) * speed
+        new_amount_y = random.uniform(-1, 1) * speed
+        
+        # Point the "vision" angle towards that new direction
+        my_creature.angle = math.atan2(new_amount_y, new_amount_x)
+        count = 0
+    else:
+        # Move based on the last chosen direction
+        my_creature.x += new_amount_x
+        my_creature.y += new_amount_y
+        count += 1
+        # Update the line direction to match current movement
+        chase_angle = my_creature.angle
+
+
+def checkBoundaries():
+    if my_creature.x < 0: my_creature.x = 0
+    if my_creature.y < 0: my_creature.y = 0
+    if (my_creature.x + my_creature.size) > width: my_creature.x = width - my_creature.size
+    if (my_creature.y + my_creature.size) > height: my_creature.y = height - my_creature.size
+
 def reset_game(speed, size):
     global food_list, generation_count
     generation_count += 1
     food_list = []
     for i in range(random.randint(26, 30)):
-        new_food = Creature(random.uniform(0, width-10), random.uniform(0, height-10), 10)
+        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 10)
         food_list.append(new_food)
     
     # Return a creature with the new varied attributes
@@ -88,14 +198,14 @@ while running:
         # Logic to reset when food is gone OR creature dies
     tick += 1
     if tick >30:
-        new_food = Creature(random.uniform(0, width-10), random.uniform(0, height-10), 10)
+        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 10)
         food_list.append(new_food)
         tick = 0
-    if len(food_list) == 0 or my_creature.alive == 0:
+    if my_creature.alive == 0:
         Gen_testing_list.append(my_creature.score)
 
         # Vary the attributes for the next run
-        current_speed += .33      # Increase speed by 1 each time
+        current_speed += 0.33      # Increase speed by 1 each time
         current_size -= 2       # Get smaller each time
         
         # Re-initialize with new values
@@ -108,81 +218,8 @@ while running:
     if keys[pygame.K_DOWN]:  food_creature.y += food_creature.speed
 
     cx, cy = my_creature.x + (my_creature.size // 2), my_creature.y + (my_creature.size // 2)
-
-    if len(food_list) > 0:
-        # Popping Loop
-        for m in range(len(food_list) - 1, -1, -1):
-            curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
-            curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
-            distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
-            if distance < (my_creature.size // 2): 
-                my_creature.hunger += food_list[m].qnty
-                if my_creature.hunger > 100:
-                    my_creature.hunger = 100
-                food_list.pop(m)
-        if my_creature.hunger > 0:
-            my_creature.hunger -= my_creature.metabolism
-        if my_creature.hunger <= 0:
-            my_creature.alive = 0
-        else:
-            curr_prey_dist = 10000
-            curr_prey = None
-
-            if len(food_list) > 0:
-                if my_creature.hunger < my_creature.greed *100:
-
-                    for m in range(len(food_list)):
-                        dx = (food_list[m].x + (food_list[m].size // 2)) - cx
-                        dy = (food_list[m].y + (food_list[m].size // 2)) - cy
-                        
-                        # Rotated Math Point Check
-                        cos_a = math.cos(-my_creature.angle)
-                        sin_a = math.sin(-my_creature.angle)
-                        rx = dx * cos_a - dy * sin_a
-                        ry = dx * sin_a + dy * cos_a
-                        
-                        if (rx**2 / my_creature.view_w**2) + (ry**2 / my_creature.view_h**2) <= 1:
-                            distance = math.sqrt(dx**2 + dy**2)
-                            if distance < curr_prey_dist:
-                                curr_prey_dist = distance
-                                curr_prey = m 
-
-                    if curr_prey is not None:
-                        x_dif = (food_list[curr_prey].x + (food_list[curr_prey].size // 2)) - cx
-                        y_dif = (food_list[curr_prey].y + (food_list[curr_prey].size // 2)) - cy
-                        chase_angle = math.atan2(y_dif, x_dif)
-                        my_creature.angle = chase_angle 
-                        my_creature.x += my_creature.speed * math.cos(chase_angle)
-                        my_creature.y += my_creature.speed * math.sin(chase_angle)
-                    else:
-                        if count > 20:
-                            new_amount_x = random.randint(-1,1)*my_creature.random_move*my_creature.speed
-                            new_amount_y = random.randint(-1,1)*my_creature.random_move*my_creature.speed
-                            my_creature.angle = math.atan2(new_amount_y, new_amount_x) # Point vision where moving
-                            count = 0
-                        else:
-                            my_creature.x += new_amount_x
-                            my_creature.y += new_amount_y
-                            count += 1
-                            chase_angle = my_creature.angle
-                else:
-                    if count > 20:
-                        new_amount_x = random.randint(-1,1)*my_creature.random_move*my_creature.speed
-                        new_amount_y = random.randint(-1,1)*my_creature.random_move*my_creature.speed
-                        my_creature.angle = math.atan2(new_amount_y, new_amount_x) # Point vision where moving
-                        count = 0
-                    else:
-                        my_creature.x += new_amount_x
-                        my_creature.y += new_amount_y
-                        count += 1
-                        chase_angle = my_creature.angle
-                    
-                # Reverted to your original IF boundaries
-                if my_creature.x < 0: my_creature.x = 0
-                if my_creature.y < 0: my_creature.y = 0
-                if (my_creature.x + my_creature.size) > width: my_creature.x = width - my_creature.size
-                if (my_creature.y + my_creature.size) > height: my_creature.y = height - my_creature.size
-
+    cx, cy, count = hunt()
+    
     screen.fill((30, 30, 30))
 
 
