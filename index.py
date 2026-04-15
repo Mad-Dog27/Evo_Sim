@@ -15,10 +15,10 @@ predator_list = []
 count = 0
 # Add a global counter
 generation_count = 0
-current_speed = 10
-current_size = 40
+current_speed = 2
+current_size = 10
 chase_angle = 0 # Initialize this so the line doesn't crash on frame 1
-
+fam_trees = [1,1,1]
 pygame.display.set_caption("Manual Control Mode")
 
 class Food:
@@ -36,18 +36,20 @@ class Character:
         self.speed = speed
 
 class Moving_Creature:
-    def __init__(self, x, y, size, speed, vision):
+
+    def __init__(self, x, y, size, speed, vision, fam_tree, colour):
         self.x = x
         self.y = y
         self.size = size
         self.speed = speed
         self.view_w = vision[0] 
         self.view_h = vision[1]
+        self.vision = vision
         self.random_move = 0.5  
         self.angle = 0
         self.hunger = 100
-        self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)/10
-        self.move_cost = 0.0005
+        self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)
+        self.move_cost = 0.0005 * self.size
         self.greed = 1
         self.patience = 1
         self.alive = 1
@@ -55,7 +57,10 @@ class Moving_Creature:
         self.new_amount_x = 0       # Moved from global
         self.new_amount_y = 0       # Moved from global
         self.chase_angle = 0
+        self.family_tree = fam_tree
 
+        self.colour = colour
+        
     def update_view(self, view_w, view_h):
         self.view_w = view_w
         self.view_h = view_h
@@ -67,6 +72,19 @@ class Moving_Creature:
 
     def tax_move(self, move):
         self.hunger -= move * self.move_cost *self.size
+    def random_stats(self, stats):
+        self.size = stats[0]
+        self.speed = stats[1]
+        self.vision = stats[2]
+        self.greed = stats[3]
+        self.patience = stats[4]
+        self.horny = stats[5]
+
+        self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)
+        self.move_cost = 0.0005 * self.size
+
+        #(size, speed, vision, greed, patience, horny)
+
 
 
 def draw_rotated_ellipse(surface, color, center, w, h, angle):
@@ -108,6 +126,8 @@ def hunt(this_creature):
             this_creature.hunger -= this_creature.metabolism
         if this_creature.hunger <= 0:
             this_creature.alive = 0
+            fam_trees[this_creature.family_tree] -= 1
+            predator_list.pop(predator_list.index(this_creature))
         else:
             curr_prey_dist = 10000
             curr_prey = None
@@ -195,23 +215,46 @@ def checkBoundaries(this_creature):
     if (this_creature.x + this_creature.size) > width: this_creature.x = width - this_creature.size
     if (this_creature.y + this_creature.size) > height: this_creature.y = height - this_creature.size
 
+def randomizeStats(this_creature):
+    stats_size = random.uniform(8,15)
+    stats_speed = 70*(1/stats_size)
+    stats_vision = [random.uniform(40, 100), random.uniform(40, 100)]
+    stats_greed = random.uniform(0,1)
+    stats_patience = random.uniform(40, 100)
+    stats_horny = random.uniform(0,1)
+    stats = [stats_size, stats_speed, stats_vision, stats_greed, stats_patience, stats_horny]
+    this_creature.random_stats(stats)
+
 def reset_game(speed, size):
     global food_list, generation_count, predator_list, num_predators
     generation_count += 1
     food_list = []
     predator_list = []
+    stats = []
+    fam_trees = [1, 1, 1]
     for i in range(random.randint(26, 30)):
-        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 10)
+        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3)
         food_list.append(new_food)
 
+    #(size, speed, vision, greed, patience, horny)
         #, x, y, size, speed, vision
-    new_predator = Moving_Creature(width // 2, height // 2, size, speed, [200, 100])
+    new_predator = Moving_Creature(width // 3, height // 2, size, speed, [60, 40], 0, (0, 0, 255))
+    randomizeStats(new_predator)
     predator_list.append(new_predator)
-    new_predator = Moving_Creature(width // 2, height // 2, size, speed, [200, 100])
+    new_predator = Moving_Creature(width // 2, height // 1, size, speed, [50, 50], 1, (255, 0, 0))
+    randomizeStats(new_predator)
     predator_list.append(new_predator)
+    new_predator = Moving_Creature(10, 10, size, speed, [70, 30], 2, (255, 255, 0))
+    randomizeStats(new_predator)
+    predator_list.append(new_predator)
+    
 
     # Return a creature with the new varied attributes
     return predator_list
+def make_clone(this_creature):
+    new_predator = Moving_Creature(this_creature.x, this_creature.y, this_creature.size, this_creature.speed, this_creature.vision, this_creature.family_tree, this_creature.colour)
+    predator_list.append(new_predator)
+    fam_trees[this_creature.family_tree] += 1
 
 # Setup
 food_creature = Character(random.uniform(0, 1) * width, random.uniform(0, 1) * height, 10, 7)
@@ -224,11 +267,18 @@ while running:
             running = False
         # Logic to reset when food is gone OR creature dies
     tick += 1
-    if tick >30:
-        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 10)
+    if tick >19:
+        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3)
         food_list.append(new_food)
         tick = 0
     
+    if len(predator_list) == 0:
+        #Gen_testing_list.append(my_creature.score)
+
+        
+        # Re-initialize with new values
+        fam_trees=[1,1, 1]
+        predator_list = reset_game(current_speed, current_size)
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:  food_creature.x -= food_creature.speed
@@ -243,6 +293,9 @@ while running:
             # Pass the creature into hunt
             cx, cy, count = hunt(this_creature)
 
+            if this_creature.hunger > 99 and random.uniform(0,1) > 0.9:
+                make_clone(this_creature)
+
     
     screen.fill((30, 30, 30))
     screen.fill((30, 30, 30))
@@ -251,7 +304,7 @@ while running:
         pcx, pcy = predator.x + (predator.size // 2), predator.y + (predator.size // 2)
         if predator.alive:
             draw_rotated_ellipse(screen, (50, 50, 50), (pcx, pcy), predator.view_w, predator.view_h, predator.angle)
-            pygame.draw.rect(screen, (0, 200, 255), (predator.x, predator.y, predator.size, predator.size))
+            pygame.draw.rect(screen, (predator.colour), (predator.x, predator.y, predator.size, predator.size))
             hunger_text = my_font.render(f"H: {int(predator.hunger)}", True, (255, 255, 255))
             screen.blit(hunger_text, (predator.x, predator.y - 30))
             
@@ -261,18 +314,12 @@ while running:
     ui_x = 20
     ui_y = 20
     spacing = 40
-
-    for i, predator in enumerate(predator_list):
-        # Determine color: White normally, Red if starving
-        text_color = (255, 255, 255) if predator.hunger > 25 else (255, 50, 50)
-        
-        # Status label (Alive vs Dead)
-        status = f"P{i+1} Hunger: {int(predator.hunger)}" if predator.alive else f"P{i+1}: DEAD"
-        
-        # Render and display in a fixed column
-        ui_text = my_font.render(status, True, text_color)
-        screen.blit(ui_text, (ui_x, ui_y + (i * spacing)))
-
+    colour_list = [(0,0,255), (255, 0,0), (255, 255,0)]
+    line_height = 35 
+    for i, val in enumerate(fam_trees):
+        # Convert whatever the value is (int, float, string) into text
+        text_surf = my_font.render(str(val), True, (colour_list[i]))
+        screen.blit(text_surf, (20, 50 + (i * line_height)))
 
 
     
@@ -283,7 +330,7 @@ while running:
     for f in food_list:
         pygame.draw.rect(screen, (0, 255, 0), (f.x, f.y, f.size, f.size))
     gen_text = my_font.render(f"Gen: {generation_count}", True, (255, 255, 255))
-    screen.blit(gen_text, (50, 100)) # Draw it below the hunger text
+    screen.blit(gen_text, (20, 20)) # Draw it below the hunger text
     
     start_x, start_y = 600, 50 
     line_height = 30
