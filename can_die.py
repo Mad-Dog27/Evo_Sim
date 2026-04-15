@@ -9,8 +9,7 @@ my_font = pygame.font.Font(None, 50)
 
 food_amnt = random.randint(15, 20)
 food_list = []
-Gen_testing_list = []  
-
+creature_testing_list = []  
 count = 0
 new_amount_x = 0
 new_amount_y = 0
@@ -44,10 +43,11 @@ class Moving_Creature:
         self.turn_speed = turn_speed
         self.angle = 0
         self.hunger = 100
-        self.metabolism = (self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000
+        self.metabolism = (self.speed / 50) + (self.size / 80) + (self.view_h + self.view_w) /500
         self.alive = 1
         self.greed = 1
         self.score = 0
+    
     def update_view(self, view_w, view_h):
         self.view_w = view_w
         self.view_h = view_h
@@ -60,46 +60,24 @@ def draw_rotated_ellipse(surface, color, center, w, h, angle):
     new_rect = rotated_surf.get_rect(center=center)
     surface.blit(rotated_surf, new_rect)
 
-# Add a global counter
-generation_count = 0
-current_speed = 5
-current_size = 40
-
-def reset_game(speed, size):
-    global food_list, generation_count
-    generation_count += 1
+def reset_game():
+    global food_list, my_creature
     food_list = []
-    for i in range(random.randint(26, 30)):
+    food_amnt = random.randint(26, 30) 
+    for i in range(food_amnt):
         new_food = Creature(random.uniform(0, width-10), random.uniform(0, height-10), 10)
         food_list.append(new_food)
-    
-    # Return a creature with the new varied attributes
-    return Moving_Creature(width // 2, height // 2, size, speed, 0.5)
+    my_creature = Moving_Creature(width // 2, height // 2, 40, 5, 0.5)
 
 # Setup
 food_creature = Character(random.uniform(0, 1) * width, random.uniform(0, 1) * height, 10, 7)
-my_creature = reset_game(current_speed, current_size)
+reset_game()
+
 running = True
-tick = 0
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        # Logic to reset when food is gone OR creature dies
-    tick += 1
-    if tick >30:
-        new_food = Creature(random.uniform(0, width-10), random.uniform(0, height-10), 10)
-        food_list.append(new_food)
-        tick = 0
-    if len(food_list) == 0 or my_creature.alive == 0:
-        Gen_testing_list.append(my_creature.score)
-
-        # Vary the attributes for the next run
-        current_speed += .33      # Increase speed by 1 each time
-        current_size -= 2       # Get smaller each time
-        
-        # Re-initialize with new values
-        my_creature = reset_game(current_speed, current_size)
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:  food_creature.x -= food_creature.speed
@@ -185,18 +163,15 @@ while running:
 
     screen.fill((30, 30, 30))
 
-
-
-
-
     if my_creature.alive == 1:
         draw_rotated_ellipse(screen, (50, 50, 50), (cx, cy), my_creature.view_w, my_creature.view_h, my_creature.angle)
         pygame.draw.rect(screen, (0, 200, 255), (my_creature.x, my_creature.y, my_creature.size, my_creature.size))
-        my_creature.score += 1
+    
         line_length = 30
         end_x = cx + math.cos(chase_angle) * line_length
         end_y = cy + math.sin(chase_angle) * line_length
         pygame.draw.line(screen, (255, 255, 255), (cx, cy), (end_x, end_y), 3)
+        my_creature.score += 1
     else:
         pygame.draw.rect(screen, (255, 0, 0), (my_creature.x, my_creature.y, my_creature.size, my_creature.size))
     
@@ -207,20 +182,9 @@ while running:
     pygame.draw.rect(screen, (255, 200, 0), (food_creature.x, food_creature.y, food_creature.size, food_creature.size))
     for f in food_list:
         pygame.draw.rect(screen, (0, 255, 0), (f.x, f.y, f.size, f.size))
-    gen_text = my_font.render(f"Gen: {generation_count}", True, (255, 255, 255))
-    screen.blit(gen_text, (50, 100)) # Draw it below the hunger text
     
-    start_x, start_y = 600, 50 
-    line_height = 30
-
-# Loop through previous scores
-    for i, score in enumerate(Gen_testing_list):
-        # Render the text for each generation (e.g., "Gen 1: 5")
-        score_text = my_font.render(f"Gen {i+1}: {int(score)}", True, (255, 255, 255))
-        
-        # Draw it on screen, moving down by 'line_height' for each new entry
-        screen.blit(score_text, (start_x, start_y + (i * line_height)))
-  
+    if len(food_list) == 0:
+        reset_game() 
 
     pygame.display.flip()
     pygame.time.Clock().tick(60)
