@@ -10,10 +10,13 @@ my_font = pygame.font.Font(None, 50)
 food_amnt = random.randint(15, 20)
 food_list = []
 Gen_testing_list = []  
-
+num_predators = 2
+predator_list = []
 count = 0
-new_amount_x = 0
-new_amount_y = 0
+# Add a global counter
+generation_count = 0
+current_speed = 10
+current_size = 40
 chase_angle = 0 # Initialize this so the line doesn't crash on frame 1
 
 pygame.display.set_caption("Manual Control Mode")
@@ -33,93 +36,117 @@ class Character:
         self.speed = speed
 
 class Moving_Creature:
-    def __init__(self, x, y, size, speed, turn_speed):
+    def __init__(self, x, y, size, speed, vision):
         self.x = x
         self.y = y
         self.size = size
         self.speed = speed
-        self.view_w = 100 
-        self.view_h = 100    
+        self.view_w = vision[0] 
+        self.view_h = vision[1]
         self.random_move = 0.5  
-        self.turn_speed = turn_speed
         self.angle = 0
         self.hunger = 100
-        self.metabolism = (self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000
-        self.alive = 1
+        self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)/10
+        self.move_cost = 0.0005
         self.greed = 1
-        self.score = 0
-        self.patience = 0.8
+        self.patience = 1
+        self.alive = 1
+        self.count = 0              # Moved from global
+        self.new_amount_x = 0       # Moved from global
+        self.new_amount_y = 0       # Moved from global
+        self.chase_angle = 0
 
     def update_view(self, view_w, view_h):
         self.view_w = view_w
         self.view_h = view_h
+    
+    def update_specs(self, greed, patience, move_cost):
+        self.greed = greed
+        self.patience = patience
+        self.move_cost = move_cost
+
+    def tax_move(self, move):
+        self.hunger -= move * self.move_cost *self.size
+
 
 def draw_rotated_ellipse(surface, color, center, w, h, angle):
+    # 1. Make the surface slightly larger than the ellipse to allow for rotation
+    padding = 2
     target_rect = pygame.Rect(0, 0, w * 2, h * 2)
-    ellipse_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA) # Keep SRCALPHA for transparency
+    ellipse_surf = pygame.Surface((w * 2 + padding, h * 2 + padding), pygame.SRCALPHA)
+    
+    # 2. Draw the ellipse in the center of that surface
     pygame.draw.ellipse(ellipse_surf, color, target_rect, 1)
+    
+    # 3. Rotate (using -degrees because pygame rotations are counter-clockwise)
     rotated_surf = pygame.transform.rotate(ellipse_surf, -math.degrees(angle))
+    
+    # 4. CRITICAL: Re-center the new, larger surface onto the predator's center
     new_rect = rotated_surf.get_rect(center=center)
     surface.blit(rotated_surf, new_rect)
 
-# Add a global counter
-generation_count = 0
-current_speed = 5
-current_size = 40
 
-def checkColision():
+def checkColision(this_creature):
     for m in range(len(food_list) - 1, -1, -1):
         curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
         curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
         distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
-        if distance < (my_creature.size // 2): 
-            my_creature.hunger += food_list[m].qnty
-            if my_creature.hunger > 100:
-                my_creature.hunger = 100
+        if distance < (this_creature.size // 2): 
+            this_creature.hunger += food_list[m].qnty
+            if this_creature.hunger > 100:
+                this_creature.hunger = 100
             food_list.pop(m)
 
-def hunt():
+def hunt(this_creature):
     global count, new_amount_x, new_amount_y, chase_angle, cx, cy
     if len(food_list) > 0:
         
-        checkColision()
+        checkColision(this_creature)
         
         
-        if my_creature.hunger > 0:
-            my_creature.hunger -= my_creature.metabolism
-        if my_creature.hunger <= 0:
-            my_creature.alive = 0
+        if this_creature.hunger > 0:
+            this_creature.hunger -= this_creature.metabolism
+        if this_creature.hunger <= 0:
+            this_creature.alive = 0
         else:
             curr_prey_dist = 10000
             curr_prey = None
 
             if len(food_list) > 0:
-                if my_creature.hunger < my_creature.greed *100:
-                    curr_prey = findPrey(curr_prey,curr_prey_dist)
+                if this_creature.hunger < this_creature.greed *100:
+                    curr_prey = findPrey(this_creature, curr_prey,curr_prey_dist)
                     
 
                     if curr_prey is not None:
                         x_dif = (food_list[curr_prey].x + (food_list[curr_prey].size // 2)) - cx
                         y_dif = (food_list[curr_prey].y + (food_list[curr_prey].size // 2)) - cy
                         chase_angle = math.atan2(y_dif, x_dif)
-                        my_creature.angle = chase_angle 
-                        my_creature.x += my_creature.speed * math.cos(chase_angle)
-                        my_creature.y += my_creature.speed * math.sin(chase_angle)
+                        this_creature.angle = chase_angle 
+                        
+                        updatePosition(this_creature,(this_creature.speed * math.cos(chase_angle)),  (this_creature.speed * math.sin(chase_angle)))
+
                     else:
-                        if my_creature.patience > random.uniform(0,1):
-                            moveRandom(count, chase_angle, 1)
+                        if this_creature.patience > random.uniform(0,1):
+                            moveRandom(this_creature, 1)
                     
                         else:
-                            moveRandom(count, chase_angle, 1)
+                            moveRandom(this_creature, 1)
                 else:
-                    moveRandom(count, chase_angle, 0)
+                    moveRandom(this_creature, 0)
                     
                         
-                checkBoundaries()
+                checkBoundaries(this_creature)
                 
     return cx, cy, count 
 
-def findPrey(curr_prey, curr_prey_distance):
+def updatePosition(this_creature, move_x, move_y): # Use the passed values
+    this_creature.x += move_x
+    this_creature.y += move_y
+    distance = math.sqrt(move_x**2 + move_y**2)
+    this_creature.tax_move(distance)
+
+
+def findPrey(this_creature, curr_prey, curr_prey_distance):
     # We need cx, cy to do the math, and my_creature to see the angle/vision
     global cx, cy 
     
@@ -131,13 +158,13 @@ def findPrey(curr_prey, curr_prey_distance):
         dy = (food_list[m].y + (food_list[m].size // 2)) - cy
                 
         # Rotated Math Point Check
-        cos_a = math.cos(-my_creature.angle)
-        sin_a = math.sin(-my_creature.angle)
+        cos_a = math.cos(-this_creature.angle)
+        sin_a = math.sin(-this_creature.angle)
         rx = dx * cos_a - dy * sin_a
         ry = dx * sin_a + dy * cos_a
                         
         # Ellipse check
-        if (rx**2 / my_creature.view_w**2) + (ry**2 / my_creature.view_h**2) <= 1:
+        if (rx**2 / this_creature.view_w**2) + (ry**2 / this_creature.view_h**2) <= 1:
             distance = math.sqrt(dx**2 + dy**2)
             if distance < best_dist:
                 best_dist = distance
@@ -145,50 +172,50 @@ def findPrey(curr_prey, curr_prey_distance):
                 
     return found_index
 
-def moveRandom(current_count, current_chase_angle, is_hungry):
-    # We need global access to the 'random direction' variables
-    global new_amount_x, new_amount_y, count, chase_angle
-    if is_hungry:
-        speed = my_creature.speed
+def moveRandom(this_creature, is_hungry):
+    # Determine speed based on hunger state
+    speed = this_creature.speed if is_hungry else this_creature.speed * this_creature.random_move
+    
+    if this_creature.count > 20:
+        # Update the creature's own movement variables
+        this_creature.new_amount_x = random.uniform(-1, 1) * speed
+        this_creature.new_amount_y = random.uniform(-1, 1) * speed
+        this_creature.angle = math.atan2(this_creature.new_amount_y, this_creature.new_amount_x)
+        this_creature.count = 0
     else:
-        speed = my_creature.random_move * my_creature.speed
-    if current_count > 20:
-        # Choose a new random direction
-        new_amount_x = random.uniform(-1, 1) * speed
-        new_amount_y = random.uniform(-1, 1) * speed
-        
-        # Point the "vision" angle towards that new direction
-        my_creature.angle = math.atan2(new_amount_y, new_amount_x)
-        count = 0
-    else:
-        # Move based on the last chosen direction
-        my_creature.x += new_amount_x
-        my_creature.y += new_amount_y
-        count += 1
-        # Update the line direction to match current movement
-        chase_angle = my_creature.angle
+        this_creature.x += this_creature.new_amount_x
+        this_creature.y += this_creature.new_amount_y
+        this_creature.count += 1
+        this_creature.chase_angle = this_creature.angle
 
 
-def checkBoundaries():
-    if my_creature.x < 0: my_creature.x = 0
-    if my_creature.y < 0: my_creature.y = 0
-    if (my_creature.x + my_creature.size) > width: my_creature.x = width - my_creature.size
-    if (my_creature.y + my_creature.size) > height: my_creature.y = height - my_creature.size
+def checkBoundaries(this_creature):
+    if this_creature.x < 0: this_creature.x = 0
+    if this_creature.y < 0: this_creature.y = 0
+    if (this_creature.x + this_creature.size) > width: this_creature.x = width - this_creature.size
+    if (this_creature.y + this_creature.size) > height: this_creature.y = height - this_creature.size
 
 def reset_game(speed, size):
-    global food_list, generation_count
+    global food_list, generation_count, predator_list, num_predators
     generation_count += 1
     food_list = []
+    predator_list = []
     for i in range(random.randint(26, 30)):
         new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 10)
         food_list.append(new_food)
-    
+
+        #, x, y, size, speed, vision
+    new_predator = Moving_Creature(width // 2, height // 2, size, speed, [200, 100])
+    predator_list.append(new_predator)
+    new_predator = Moving_Creature(width // 2, height // 2, size, speed, [200, 100])
+    predator_list.append(new_predator)
+
     # Return a creature with the new varied attributes
-    return Moving_Creature(width // 2, height // 2, size, speed, 0.5)
+    return predator_list
 
 # Setup
 food_creature = Character(random.uniform(0, 1) * width, random.uniform(0, 1) * height, 10, 7)
-my_creature = reset_game(current_speed, current_size)
+predator_list = reset_game(current_speed, current_size)
 running = True
 tick = 0
 while running:
@@ -201,15 +228,7 @@ while running:
         new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 10)
         food_list.append(new_food)
         tick = 0
-    if my_creature.alive == 0:
-        Gen_testing_list.append(my_creature.score)
-
-        # Vary the attributes for the next run
-        current_speed += 0.33      # Increase speed by 1 each time
-        current_size -= 2       # Get smaller each time
-        
-        # Re-initialize with new values
-        my_creature = reset_game(current_speed, current_size)
+    
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:  food_creature.x -= food_creature.speed
@@ -217,30 +236,49 @@ while running:
     if keys[pygame.K_UP]:    food_creature.y -= food_creature.speed
     if keys[pygame.K_DOWN]:  food_creature.y += food_creature.speed
 
-    cx, cy = my_creature.x + (my_creature.size // 2), my_creature.y + (my_creature.size // 2)
-    cx, cy, count = hunt()
+    for this_creature in predator_list:
+        if this_creature.alive:
+            # Update center points for this specific creature
+            cx, cy = this_creature.x + (this_creature.size // 2), this_creature.y + (this_creature.size // 2)
+            # Pass the creature into hunt
+            cx, cy, count = hunt(this_creature)
+
     
     screen.fill((30, 30, 30))
+    screen.fill((30, 30, 30))
+
+    for predator in predator_list:
+        pcx, pcy = predator.x + (predator.size // 2), predator.y + (predator.size // 2)
+        if predator.alive:
+            draw_rotated_ellipse(screen, (50, 50, 50), (pcx, pcy), predator.view_w, predator.view_h, predator.angle)
+            pygame.draw.rect(screen, (0, 200, 255), (predator.x, predator.y, predator.size, predator.size))
+            hunger_text = my_font.render(f"H: {int(predator.hunger)}", True, (255, 255, 255))
+            screen.blit(hunger_text, (predator.x, predator.y - 30))
+            
+        else:
+            pygame.draw.rect(screen, (255, 0, 0), (predator.x, predator.y, predator.size, predator.size))
+
+    ui_x = 20
+    ui_y = 20
+    spacing = 40
+
+    for i, predator in enumerate(predator_list):
+        # Determine color: White normally, Red if starving
+        text_color = (255, 255, 255) if predator.hunger > 25 else (255, 50, 50)
+        
+        # Status label (Alive vs Dead)
+        status = f"P{i+1} Hunger: {int(predator.hunger)}" if predator.alive else f"P{i+1}: DEAD"
+        
+        # Render and display in a fixed column
+        ui_text = my_font.render(status, True, text_color)
+        screen.blit(ui_text, (ui_x, ui_y + (i * spacing)))
 
 
 
-
-
-    if my_creature.alive == 1:
-        draw_rotated_ellipse(screen, (50, 50, 50), (cx, cy), my_creature.view_w, my_creature.view_h, my_creature.angle)
-        pygame.draw.rect(screen, (0, 200, 255), (my_creature.x, my_creature.y, my_creature.size, my_creature.size))
-        my_creature.score += 1
-        line_length = 30
-        end_x = cx + math.cos(chase_angle) * line_length
-        end_y = cy + math.sin(chase_angle) * line_length
-        pygame.draw.line(screen, (255, 255, 255), (cx, cy), (end_x, end_y), 3)
-    else:
-        pygame.draw.rect(screen, (255, 0, 0), (my_creature.x, my_creature.y, my_creature.size, my_creature.size))
     
-    text_surface = my_font.render(f"Hunger: {int(my_creature.hunger)}", True, (255, 0,0))
+    
 
     # 3. Blit (draw) to screen at (x, y) coordinates
-    screen.blit(text_surface, (50, 50))
     pygame.draw.rect(screen, (255, 200, 0), (food_creature.x, food_creature.y, food_creature.size, food_creature.size))
     for f in food_list:
         pygame.draw.rect(screen, (0, 255, 0), (f.x, f.y, f.size, f.size))
