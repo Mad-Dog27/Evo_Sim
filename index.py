@@ -22,12 +22,14 @@ fam_trees = [1,1,1]
 pygame.display.set_caption("Manual Control Mode")
 
 class Food:
-    def __init__(self, x, y, size):
+    def __init__(self, x, y, size, type):
         self.x = x
         self.y = y
         self.size = size
-        self.qnty = 25
-
+        if type == "creature":
+            self.qnty = 25
+        else:
+            self.qnty = 20
 class Character:
     def __init__(self, x, y, size, speed):
         self.x = x
@@ -58,8 +60,11 @@ class Moving_Creature:
         self.new_amount_y = 0       # Moved from global
         self.chase_angle = 0
         self.family_tree = fam_tree
-
+        self.hostility = 0
         self.colour = colour
+        self.horny = 0.5
+        self.baby_amount = 1
+        self.repro_timer = 0
         
     def update_view(self, view_w, view_h):
         self.view_w = view_w
@@ -76,14 +81,18 @@ class Moving_Creature:
         self.size = stats[0]
         self.speed = stats[1]
         self.vision = stats[2]
+        self.view_w = self.vision[0] 
+        self.view_h = self.vision[1] 
+
         self.greed = stats[3]
         self.patience = stats[4]
         self.horny = stats[5]
-
+        self.hostility = stats[6]
+        self.stats = stats[:]   # copy, not nested list
         self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)
         self.move_cost = 0.0005 * self.size
 
-        #(size, speed, vision, greed, patience, horny)
+        #(size, speed, vision, greed, patience, horny, hostility)
 
 
 
@@ -114,51 +123,113 @@ def checkColision(this_creature):
             if this_creature.hunger > 100:
                 this_creature.hunger = 100
             food_list.pop(m)
+    
+    for other in predator_list:
+        if other != this_creature:
+            dx = other.x - this_creature.x
+            dy = other.y - this_creature.y
+            dist = math.sqrt(dx**2 + dy**2)
+
+            if dist < this_creature.size:
+                if this_creature.size > other.size:
+                    other.alive = 0
+                    if this_creature.hunger < this_creature.greed *100:
+                        predator_list.remove(other)
+                        this_creature.hunger += 50
+                    else:
+                        new_food = Food(other.x, other.y, other.size, "creature")
+                        food_list.append(new_food)
+                        predator_list.remove(other)
+                    
 
 def hunt(this_creature):
-    global count, new_amount_x, new_amount_y, chase_angle, cx, cy
+    global cx, cy
+
+    checkColision(this_creature)
+
+    # Hunger + death
+    if this_creature.hunger > 0:
+        this_creature.hunger -= this_creature.metabolism
+    else:
+        this_creature.alive = 0
+        fam_trees[this_creature.family_tree] -= 1
+        new_food = Food(this_creature.x, this_creature.y, this_creature.size, "creature")
+        food_list.append(new_food)
+        predator_list.remove(this_creature)
+        return cx, cy, 0
+
+    # --- FIND TARGETS ---
+    food_index = None
+    creature_index = None
+
     if len(food_list) > 0:
-        
-        checkColision(this_creature)
-        
-        
-        if this_creature.hunger > 0:
-            this_creature.hunger -= this_creature.metabolism
-        if this_creature.hunger <= 0:
-            this_creature.alive = 0
-            fam_trees[this_creature.family_tree] -= 1
-            predator_list.pop(predator_list.index(this_creature))
+        food_index = findPrey(this_creature, None, 10000)
+
+    if len(predator_list) > 1 and this_creature.hostility > 0.67:
+        creature_index = huntOtherCreature(this_creature, None, 10000)
+
+    # --- DECIDE WHAT TO CHASE ---
+    target = None
+
+    if creature_index is not None:
+        target = ("creature", creature_index)
+    elif food_index is not None:
+        target = ("food", food_index)
+
+    # --- MOVE TOWARD TARGET ---
+    if target is not None:
+        if target[0] == "creature":
+            prey = predator_list[target[1]]
         else:
-            curr_prey_dist = 10000
-            curr_prey = None
+            prey = food_list[target[1]]
 
-            if len(food_list) > 0:
-                if this_creature.hunger < this_creature.greed *100:
-                    curr_prey = findPrey(this_creature, curr_prey,curr_prey_dist)
-                    
+        x_dif = (prey.x + prey.size // 2) - cx
+        y_dif = (prey.y + prey.size // 2) - cy
 
-                    if curr_prey is not None:
-                        x_dif = (food_list[curr_prey].x + (food_list[curr_prey].size // 2)) - cx
-                        y_dif = (food_list[curr_prey].y + (food_list[curr_prey].size // 2)) - cy
-                        chase_angle = math.atan2(y_dif, x_dif)
-                        this_creature.angle = chase_angle 
-                        
-                        updatePosition(this_creature,(this_creature.speed * math.cos(chase_angle)),  (this_creature.speed * math.sin(chase_angle)))
+        angle = math.atan2(y_dif, x_dif)
+        this_creature.angle = angle
 
-                    else:
-                        if this_creature.patience > random.uniform(0,1):
-                            moveRandom(this_creature, 1)
-                    
-                        else:
-                            moveRandom(this_creature, 1)
-                else:
-                    moveRandom(this_creature, 0)
-                    
-                        
-                checkBoundaries(this_creature)
+        updatePosition(
+            this_creature,
+            this_creature.speed * math.cos(angle),
+            this_creature.speed * math.sin(angle)
+        )
+
+    else:
+        moveRandom(this_creature, 1)
+
+    checkBoundaries(this_creature)
+
+    return cx, cy, 0          
+                
+
                 
     return cx, cy, count 
-
+def huntOtherCreature(this_creature, curr_prey, curr_prey_dist):
+    global cx, cy 
+    
+    best_dist = curr_prey_dist # Use a local variable to track the closest
+    found_index = curr_prey      # This will store the index of the best food
+    index = predator_list.index(this_creature)
+    for m in range(len(predator_list)):
+        if m != index:
+            dx = (predator_list[m].x + (predator_list[m].size // 2)) - cx
+            dy = (predator_list[m].y + (predator_list[m].size // 2)) - cy
+                
+        # Rotated Math Point Check
+            cos_a = math.cos(-this_creature.angle)
+            sin_a = math.sin(-this_creature.angle)
+            rx = dx * cos_a - dy * sin_a
+            ry = dx * sin_a + dy * cos_a
+                        
+        # Ellipse check
+            if (rx**2 / this_creature.view_w**2) + (ry**2 / this_creature.view_h**2) <= 1:
+                distance = math.sqrt(dx**2 + dy**2)
+                if distance < best_dist:
+                    best_dist = distance
+                    found_index = m 
+    return found_index
+    
 def updatePosition(this_creature, move_x, move_y): # Use the passed values
     this_creature.x += move_x
     this_creature.y += move_y
@@ -222,8 +293,10 @@ def randomizeStats(this_creature):
     stats_greed = random.uniform(0,1)
     stats_patience = random.uniform(40, 100)
     stats_horny = random.uniform(0,1)
-    stats = [stats_size, stats_speed, stats_vision, stats_greed, stats_patience, stats_horny]
-    this_creature.random_stats(stats)
+    stats_hostility = random.uniform(0,1)
+    
+    stats = [stats_size, stats_speed, stats_vision, stats_greed, stats_patience, stats_horny, stats_hostility]
+    this_creature.random_stats(stats) 
 
 def reset_game(speed, size):
     global food_list, generation_count, predator_list, num_predators
@@ -233,7 +306,7 @@ def reset_game(speed, size):
     stats = []
     fam_trees = [1, 1, 1]
     for i in range(random.randint(26, 30)):
-        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3)
+        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3, "food")
         food_list.append(new_food)
 
     #(size, speed, vision, greed, patience, horny)
@@ -252,10 +325,52 @@ def reset_game(speed, size):
     # Return a creature with the new varied attributes
     return predator_list
 def make_clone(this_creature):
-    new_predator = Moving_Creature(this_creature.x, this_creature.y, this_creature.size, this_creature.speed, this_creature.vision, this_creature.family_tree, this_creature.colour)
+    # 1. Copy parent's stats
+    new_stats = this_creature.stats[:]
+
+    # 2. Pick one stat to mutate
+    change_index = random.randint(0, 6)
+
+    # 3. Apply mutation
+    if change_index == 0:  # size
+        new_stats[0] += random.uniform(-1, 1)
+        new_stats[0] = max(5, min(20, new_stats[0]))  # clamp
+
+        # keep speed tied to size
+        new_stats[1] = 70 / new_stats[0]
+
+    elif change_index == 1:  # speed (optional if tied to size)
+        new_stats[1] += random.uniform(-1, 1)
+        new_stats[1] = max(0.1, min(10, new_stats[1]))
+
+    elif change_index == 2:  # vision (this is a list)
+        new_stats[2][0] += random.uniform(-10, 10)
+        new_stats[2][1] += random.uniform(-10, 10)
+
+        new_stats[2][0] = max(10, min(150, new_stats[2][0]))
+        new_stats[2][1] = max(10, min(150, new_stats[2][1]))
+
+    else:  # greed, patience, horny, hostility
+        new_stats[change_index] += random.uniform(-0.1, 0.1)
+        new_stats[change_index] = max(0, min(1, new_stats[change_index]))
+
+    # 4. Create new creature
+    new_predator = Moving_Creature(
+        this_creature.x,
+        this_creature.y,
+        this_creature.size,
+        this_creature.speed,
+        this_creature.vision[:],  # copy vision list
+        this_creature.family_tree,
+        this_creature.colour
+    )
+
+    # 5. Apply mutated stats
+    new_predator.random_stats(new_stats)
+
+    # 6. Add to world
     predator_list.append(new_predator)
     fam_trees[this_creature.family_tree] += 1
-
 # Setup
 food_creature = Character(random.uniform(0, 1) * width, random.uniform(0, 1) * height, 10, 7)
 predator_list = reset_game(current_speed, current_size)
@@ -268,7 +383,7 @@ while running:
         # Logic to reset when food is gone OR creature dies
     tick += 1
     if tick >19:
-        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3)
+        new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3, "food")
         food_list.append(new_food)
         tick = 0
     
@@ -288,13 +403,19 @@ while running:
 
     for this_creature in predator_list:
         if this_creature.alive:
+            this_creature.repro_timer += 1
             # Update center points for this specific creature
             cx, cy = this_creature.x + (this_creature.size // 2), this_creature.y + (this_creature.size // 2)
             # Pass the creature into hunt
             cx, cy, count = hunt(this_creature)
 
-            if this_creature.hunger > 99 and random.uniform(0,1) > 0.9:
-                make_clone(this_creature)
+            if this_creature.hunger > ((1 - this_creature.horny) * 100):
+                if this_creature.repro_timer > 120:  # 2 seconds at 60 FPS
+                    if random.uniform(0,1) > 0.7:
+                        for i in range(this_creature.baby_amount): 
+                            make_clone(this_creature)
+                            this_creature.hunger -= 30
+                            this_creature.repro_timer = 0
 
     
     screen.fill((30, 30, 30))
