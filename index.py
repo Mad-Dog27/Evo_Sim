@@ -6,7 +6,7 @@ pygame.init()
 width, height = 800, 600
 screen = pygame.display.set_mode((width, height))
 my_font = pygame.font.Font(None, 50)
-
+selected_creature = None
 food_amnt = random.randint(15, 20)
 food_list = []
 Gen_testing_list = []  
@@ -15,12 +15,12 @@ predator_list = []
 count = 0
 # Add a global counter
 generation_count = 0
-current_speed = 2
+current_speed = .1
 current_size = 10
 chase_angle = 0 # Initialize this so the line doesn't crash on frame 1
-
+init_fam_amount = 4
 init_pop = 5
-fam_trees = np.ones(init_pop)
+fam_trees = np.ones(init_pop) * init_fam_amount
 colour_list = []
 
 diet_types = ["herbivore", "omnivore", "carnivore"]
@@ -32,9 +32,9 @@ class Food:
         self.y = y
         self.size = size
         if type == "creature":
-            self.qnty = 25
+            self.qnty = 15
         else:
-            self.qnty = 20
+            self.qnty = 10
 class Character:
     def __init__(self, x, y, size, speed):
         self.x = x
@@ -148,10 +148,10 @@ def checkColision(this_creature):
                             new_food = Food(other.x, other.y, other.size, "creature")
                             food_list.append(new_food)
                             predator_list.remove(other)
-                    
+                        fam_trees[other.family_tree] -=1
 
-def hunt(this_creature):
-    global cx, cy
+
+def hunt(this_creature, cx, cy):
 
     checkColision(this_creature)
 
@@ -183,7 +183,7 @@ def hunt(this_creature):
         if this_creature.diet == "omnivore" or this_creature.diet == "carnivore":
             target = ("creature", creature_index)
     elif food_index is not None:
-        if this_creature.diet == "omivore" or this_creature.diet == "herbivore":
+        if this_creature.diet == "omnivore" or this_creature.diet == "herbivore":
             target = ("food", food_index)
 
     # --- MOVE TOWARD TARGET ---
@@ -313,7 +313,7 @@ def checkBoundaries(this_creature):
 
 def randomizeStats(this_creature):
     stats_size = random.uniform(8,15)
-    stats_speed = 70*(1/stats_size)
+    stats_speed = (12/stats_size)
     stats_vision = [random.uniform(40, 100), random.uniform(40, 100)]
     stats_greed = random.uniform(0,1)
     stats_patience = random.uniform(40, 100)
@@ -329,7 +329,7 @@ def reset_game(speed, size):
     food_list = []
     predator_list = []
     stats = []
-    fam_trees = np.ones(init_pop)
+    fam_trees = np.zeros(init_pop)
     for i in range(random.randint(26, 30)):
         new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3, "food")
         food_list.append(new_food)
@@ -340,9 +340,24 @@ def reset_game(speed, size):
         colour = random_colour()
         diet_index = random.randint(0,2)
         diet = diet_types[diet_index]
+
         new_predator = Moving_Creature(random_pos()[0], random_pos()[1], size, speed, [60, 40], i, colour, diet)
         randomizeStats(new_predator)
-        predator_list.append(new_predator)
+        for m in range(init_fam_amount):
+            new_predator = Moving_Creature(
+                random_pos()[0],
+                random_pos()[1],
+                size,
+                speed,
+                [60, 40],
+                i,
+                colour,
+                diet
+            )
+            randomizeStats(new_predator)
+
+            predator_list.append(new_predator)
+            fam_trees[i] += 1
         colour_list.append(colour)
     
 
@@ -353,7 +368,17 @@ def make_clone(this_creature):
     new_stats = this_creature.stats[:]
 
     chance_to_evolve = random.uniform(0,1)
-    
+    if chance_to_evolve == 0.11:
+        current_diet = this_creature.diet
+        diet_index = diet_types.index(current_diet)
+
+        indices = list(range(len(predator_list)))
+        indices.remove(diet_index)  # remove the current creature
+
+        random_index = random.choice(indices)
+        diet = diet_types[random_index]
+    else:
+        diet = this_creature.diet
     if chance_to_evolve > 0.5: # 50% chance for stat to change
 
         change_index = random.randint(0, 6)
@@ -380,7 +405,7 @@ def make_clone(this_creature):
         this_creature.vision[:],  # copy vision list
         this_creature.family_tree,
         this_creature.colour,
-        this_creature.diet
+        diet
     )
 
     # 5. Apply mutated stats
@@ -400,7 +425,7 @@ while running:
             running = False
         # Logic to reset when food is gone OR creature dies
     tick += 1
-    if tick >19:
+    if tick >50:
         new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3, "food")
         food_list.append(new_food)
         tick = 0
@@ -410,7 +435,7 @@ while running:
 
         
         # Re-initialize with new values
-        fam_trees=[1,1, 1]
+        fam_trees= np.ones(init_pop) * init_fam_amount
         predator_list = reset_game(current_speed, current_size)
 
     keys = pygame.key.get_pressed()
@@ -425,7 +450,7 @@ while running:
             # Update center points for this specific creature
             cx, cy = this_creature.x + (this_creature.size // 2), this_creature.y + (this_creature.size // 2)
             # Pass the creature into hunt
-            cx, cy, count = hunt(this_creature)
+            cx, cy, count = hunt(this_creature, cx, cy)
 
             if this_creature.hunger > ((1 - this_creature.horny) * 100):
                 if this_creature.repro_timer > 120:  # 2 seconds at 60 FPS
@@ -480,7 +505,34 @@ while running:
         
         # Draw it on screen, moving down by 'line_height' for each new entry
         screen.blit(score_text, (start_x, start_y + (i * line_height)))
-  
+
+    if event.type == pygame.MOUSEBUTTONDOWN:
+        mx, my = pygame.mouse.get_pos()
+
+        for creature in predator_list:
+            rect = pygame.Rect(creature.x, creature.y, creature.size, creature.size)
+
+            if rect.collidepoint(mx, my):
+                selected_creature = creature
+                selected_creature = creature
+                break
+    if selected_creature is not None:
+        pygame.draw.rect(
+            screen,
+            (255, 255, 0),  # yellow border
+            (selected_creature.x, selected_creature.y, selected_creature.size, selected_creature.size),
+            2
+        )
+    if selected_creature is not None:
+        info = f"Hunger: {int(selected_creature.hunger)} | Tree: {int(selected_creature.family_tree)}"
+        text = my_font.render(info, True, (255, 255, 255))
+        screen.blit(text, (20, 550))
+        family_colour = colour_list[selected_creature.family_tree]
+        pygame.draw.rect(
+            screen,
+            family_colour,
+            (100, 100, 50, 50)
+        )
 
     pygame.display.flip()
     pygame.time.Clock().tick(60)
