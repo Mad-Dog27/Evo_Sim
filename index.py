@@ -175,7 +175,7 @@ def hunt(this_creature):
     # --- DECIDE WHAT TO CHASE ---
     target = None
 
-    if creature_index is not None:
+    if creature_index is not None: # stores [0,1] being "type" and index
         target = ("creature", creature_index)
     elif food_index is not None:
         target = ("food", food_index)
@@ -191,6 +191,9 @@ def hunt(this_creature):
         y_dif = (prey.y + prey.size // 2) - cy
 
         angle = math.atan2(y_dif, x_dif)
+        if target[0] == "creature":
+            if predator_list[target[1]].size > this_creature.size: #other is larger and thus may eat this creature
+                angle += math.pi
         this_creature.angle = angle
 
         updatePosition(
