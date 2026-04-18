@@ -26,11 +26,37 @@ colour_list = []
 diet_types = ["herbivore", "omnivore", "carnivore"]
 pygame.display.set_caption("Manual Control Mode")
 
+
+class Tile:
+    def __init__(self, x, y, size):
+        self.x = x
+        self.y = y
+        self.size = size
+        
+        # ecosystem stats
+        self.food_regen = random.uniform(0.1, 1.0)
+        self.fertility = random.uniform(0.1, 1.0)
+        self.roughness = random.uniform(0, 1)
+
+tile_size = 20
+cols = width // tile_size
+rows = height // tile_size
+
+grid = []
+
+for y in range(rows):
+    row = []
+    for x in range(cols):
+        row.append(Tile(x * tile_size, y * tile_size, tile_size))
+    grid.append(row)
+
+
 class Food:
     def __init__(self, x, y, size, type):
         self.x = x
         self.y = y
         self.size = size
+        self.type = type
         if type == "creature":
             self.qnty = 15
         else:
@@ -55,7 +81,7 @@ class Moving_Creature:
         self.random_move = 0.5  
         self.angle = 0
         self.hunger = 100
-        self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)
+        self.metabolism = ((self.speed * 0.8) +(self.size * 0.15) +((self.view_h + self.view_w) / 1200)) /10
         self.move_cost = 0.0005 * self.size
         self.greed = 1
         self.patience = 1
@@ -96,7 +122,7 @@ class Moving_Creature:
         self.horny = stats[5]
         self.hostility = stats[6]
         self.stats = stats[:]   # copy, not nested list
-        self.metabolism = ((self.speed / 50) + (self.size / 50)**2 + (self.view_h + self.view_w) /1000)
+        self.metabolism = ((self.speed * 0.8) +(self.size * 0.15) +((self.view_h + self.view_w) / 1200))/10
         self.move_cost = 0.0005 * self.size
 
         #(size, speed, vision, greed, patience, horny, hostility)
@@ -121,16 +147,23 @@ def draw_rotated_ellipse(surface, color, center, w, h, angle):
 
 
 def checkColision(this_creature):
-    if this_creature.diet != "carnivore":
-        for m in range(len(food_list) - 1, -1, -1):
-            curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
-            curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
-            distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
+    for m in range(len(food_list) - 1, -1, -1):
+        curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
+        curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
+        distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
+        if this_creature.diet != "carnivore":
             if distance < (this_creature.size // 2): 
                 this_creature.hunger += food_list[m].qnty
                 if this_creature.hunger > 100:
                     this_creature.hunger = 100
                 food_list.pop(m)
+        else:
+            if food_list[m].type == "creature":
+                if distance < (this_creature.size // 2): 
+                    this_creature.hunger += food_list[m].qnty
+                    if this_creature.hunger > 100:
+                        this_creature.hunger = 100
+                    food_list.pop(m)
     if this_creature.diet != "herbivore":
         for other in predator_list:
             if other != this_creature:
@@ -183,8 +216,11 @@ def hunt(this_creature, cx, cy):
         if this_creature.diet == "omnivore" or this_creature.diet == "carnivore":
             target = ("creature", creature_index)
     elif food_index is not None:
-        if this_creature.diet == "omnivore" or this_creature.diet == "herbivore":
-            target = ("food", food_index)
+        if this_creature.diet == "omnivore" or this_creature.diet == "herbivore" or this_creature.diet == "carnivore":
+            if this_creature.diet != "carnivore":
+                target = ("food", food_index)
+            elif food_list[food_index].type == "creature":
+                target = ("food", food_index)
 
     # --- MOVE TOWARD TARGET ---
     if target is not None:
@@ -313,7 +349,13 @@ def checkBoundaries(this_creature):
 
 def randomizeStats(this_creature):
     stats_size = random.uniform(8,15)
-    stats_speed = (12/stats_size)
+    stats_speed = 3 / math.sqrt(stats_size)
+    vision_scale = math.sqrt(stats_size / 10)
+
+    stats_vision = [
+    random.uniform(40, 100) * vision_scale,
+    random.uniform(40, 100) * vision_scale
+    ]
     stats_vision = [random.uniform(40, 100), random.uniform(40, 100)]
     stats_greed = random.uniform(0,1)
     stats_patience = random.uniform(40, 100)
@@ -457,20 +499,24 @@ while running:
                     if random.uniform(0,1) > 0.7:
                         for i in range(this_creature.baby_amount): 
                             make_clone(this_creature)
-                            this_creature.hunger -= 30
+                            this_creature.hunger -= 50
                             this_creature.repro_timer = 0
 
     
     screen.fill((30, 30, 30))
-    screen.fill((30, 30, 30))
-
+    for row in grid:
+        for tile in row:
+            color = (
+                int(tile.fertility * 255),
+                int(tile.food_regen * 255),
+                int(tile.roughness * 255)
+            )
+            pygame.draw.rect(screen, color, (tile.x, tile.y, tile.size, tile.size))
     for predator in predator_list:
         pcx, pcy = predator.x + (predator.size // 2), predator.y + (predator.size // 2)
         if predator.alive:
             draw_rotated_ellipse(screen, (50, 50, 50), (pcx, pcy), predator.view_w, predator.view_h, predator.angle)
             pygame.draw.rect(screen, (predator.colour), (predator.x, predator.y, predator.size, predator.size))
-            hunger_text = my_font.render(f"H: {int(predator.hunger)}", True, (255, 255, 255))
-            screen.blit(hunger_text, (predator.x, predator.y - 30))
             
         else:
             pygame.draw.rect(screen, (255, 0, 0), (predator.x, predator.y, predator.size, predator.size))
@@ -481,7 +527,7 @@ while running:
     line_height = 35 
     for i, val in enumerate(fam_trees):
         # Convert whatever the value is (int, float, string) into text
-        text_surf = my_font.render(str(val), True, (colour_list[i]))
+        text_surf = my_font.render(f"F{i}: {int(val)}", True, colour_list[i])
         screen.blit(text_surf, (20, 50 + (i * line_height)))
 
 
@@ -523,8 +569,11 @@ while running:
             (selected_creature.x, selected_creature.y, selected_creature.size, selected_creature.size),
             2
         )
+    if selected_creature not in predator_list:
+        selected_creature = None
+        
     if selected_creature is not None:
-        info = f"Hunger: {int(selected_creature.hunger)} | Tree: {int(selected_creature.family_tree)}"
+        info = f"Hunger: {int(selected_creature.hunger)} | type: {str(selected_creature.diet)}"
         text = my_font.render(info, True, (255, 255, 255))
         screen.blit(text, (20, 550))
         family_colour = colour_list[selected_creature.family_tree]
