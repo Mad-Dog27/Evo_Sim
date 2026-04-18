@@ -1,7 +1,7 @@
 import pygame
 import random
 import math
-
+import numpy as np
 pygame.init()
 width, height = 800, 600
 screen = pygame.display.set_mode((width, height))
@@ -18,7 +18,11 @@ generation_count = 0
 current_speed = 2
 current_size = 10
 chase_angle = 0 # Initialize this so the line doesn't crash on frame 1
-fam_trees = [1,1,1]
+
+init_pop = 5
+fam_trees = np.ones(init_pop)
+colour_list = []
+
 pygame.display.set_caption("Manual Control Mode")
 
 class Food:
@@ -60,7 +64,7 @@ class Moving_Creature:
         self.new_amount_y = 0       # Moved from global
         self.chase_angle = 0
         self.family_tree = fam_tree
-        self.hostility = 0
+        self.hostility = 1
         self.colour = colour
         self.horny = 0.5
         self.baby_amount = 1
@@ -236,7 +240,19 @@ def updatePosition(this_creature, move_x, move_y): # Use the passed values
     distance = math.sqrt(move_x**2 + move_y**2)
     this_creature.tax_move(distance)
 
+def random_colour():
 
+    r = random.uniform(0,255)
+    b = random.uniform(0,255)
+    a = random.uniform(0, 255)
+    return [r,b,a]
+
+def random_pos():
+
+    x = random.randint(1,width)
+    y = random.randint(1, height)
+
+    return [x,y]
 def findPrey(this_creature, curr_prey, curr_prey_distance):
     # We need cx, cy to do the math, and my_creature to see the angle/vision
     global cx, cy 
@@ -311,15 +327,12 @@ def reset_game(speed, size):
 
     #(size, speed, vision, greed, patience, horny)
         #, x, y, size, speed, vision
-    new_predator = Moving_Creature(width // 3, height // 2, size, speed, [60, 40], 0, (0, 0, 255))
-    randomizeStats(new_predator)
-    predator_list.append(new_predator)
-    new_predator = Moving_Creature(width // 2, height // 1, size, speed, [50, 50], 1, (255, 0, 0))
-    randomizeStats(new_predator)
-    predator_list.append(new_predator)
-    new_predator = Moving_Creature(10, 10, size, speed, [70, 30], 2, (255, 255, 0))
-    randomizeStats(new_predator)
-    predator_list.append(new_predator)
+    for i in range(init_pop):
+        colour = random_colour()
+        new_predator = Moving_Creature(random_pos()[0], random_pos()[1], size, speed, [60, 40], i, colour)
+        randomizeStats(new_predator)
+        predator_list.append(new_predator)
+        colour_list.append(colour)
     
 
     # Return a creature with the new varied attributes
@@ -328,31 +341,24 @@ def make_clone(this_creature):
     # 1. Copy parent's stats
     new_stats = this_creature.stats[:]
 
-    # 2. Pick one stat to mutate
-    change_index = random.randint(0, 6)
+    chance_to_evolve = random.uniform(0,1)
+    
+    if chance_to_evolve > 0.5: # 50% chance for stat to change
 
-    # 3. Apply mutation
-    if change_index == 0:  # size
-        new_stats[0] += random.uniform(-1, 1)
-        new_stats[0] = max(5, min(20, new_stats[0]))  # clamp
+        change_index = random.randint(0, 6)
 
-        # keep speed tied to size
-        new_stats[1] = 70 / new_stats[0]
+        if change_index == 2:  # vision (this is a list)
+            new_stats[2][0] += random.uniform(-10, 10)
+            new_stats[2][1] += random.uniform(-10, 10)
 
-    elif change_index == 1:  # speed (optional if tied to size)
-        new_stats[1] += random.uniform(-1, 1)
-        new_stats[1] = max(0.1, min(10, new_stats[1]))
-
-    elif change_index == 2:  # vision (this is a list)
-        new_stats[2][0] += random.uniform(-10, 10)
-        new_stats[2][1] += random.uniform(-10, 10)
-
-        new_stats[2][0] = max(10, min(150, new_stats[2][0]))
-        new_stats[2][1] = max(10, min(150, new_stats[2][1]))
-
-    else:  # greed, patience, horny, hostility
-        new_stats[change_index] += random.uniform(-0.1, 0.1)
-        new_stats[change_index] = max(0, min(1, new_stats[change_index]))
+            new_stats[2][0] = max(10, min(150, new_stats[2][0]))
+            new_stats[2][1] = max(10, min(150, new_stats[2][1]))
+        else:
+            stat_to_change = this_creature.stats[change_index]
+            change_amnt = (random.uniform(-1,1)/50)*stat_to_change
+            new_stats[change_index] = stat_to_change + change_amnt
+            if stat_to_change == 0:
+                new_stats[1] = 70 / new_stats[0]
 
     # 4. Create new creature
     new_predator = Moving_Creature(
@@ -435,7 +441,6 @@ while running:
     ui_x = 20
     ui_y = 20
     spacing = 40
-    colour_list = [(0,0,255), (255, 0,0), (255, 255,0)]
     line_height = 35 
     for i, val in enumerate(fam_trees):
         # Convert whatever the value is (int, float, string) into text
