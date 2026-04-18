@@ -22,9 +22,18 @@ init_fam_amount = 4
 init_pop = 5
 fam_trees = np.ones(init_pop) * init_fam_amount
 colour_list = []
-
 diet_types = ["herbivore", "omnivore", "carnivore"]
 pygame.display.set_caption("Manual Control Mode")
+biome_vibe = 0.7 #0-1, higher is more plains and water
+
+tile_size = 20
+cols = width // tile_size
+rows = height // tile_size
+
+grid = []
+
+
+
 
 
 class Tile:
@@ -34,15 +43,34 @@ class Tile:
         self.size = size
         
         # ecosystem stats
-        self.food_regen = random.uniform(0.1, 1.0)
+        self.food_regen = random.uniform(0.1, 1.0) ** 0.8
         self.fertility = random.uniform(0.1, 1.0)
         self.roughness = random.uniform(0, 1)
+        self.stats = [self.food_regen, self.fertility, self.roughness]
+        if self.roughness > 0.7:
+            colour = (120, 120, 120)  # mountains
+        elif self.fertility < 0.4:
+            colour = (210, 180, 80)   # desert
+        elif self.food_regen > 0.6:
+            colour = (80, 180, 80)    # plains
+        else:
+            colour = (70, 130, 180)   # water
+        
+        self.colour = colour
+    def change_stat(self, stat_to_change):
+        self.stats[stat_to_change] *=random.uniform(0.5, 1.5)
+        self.stats[stat_to_change] = max(0.1, min(1.0, self.stats[stat_to_change]))
+        self.stats = [self.food_regen, self.fertility, self.roughness]
 
-tile_size = 20
-cols = width // tile_size
-rows = height // tile_size
-
-grid = []
+                # recalc colour
+        if self.roughness > 0.7:
+            self.colour = (120, 120, 120)
+        elif self.fertility < 0.4:
+            self.colour = (210, 180, 80)
+        elif self.food_regen > 0.6:
+            self.colour = (80, 180, 80)
+        else:
+            self.colour = (70, 130, 180)
 
 for y in range(rows):
     row = []
@@ -50,6 +78,76 @@ for y in range(rows):
         row.append(Tile(x * tile_size, y * tile_size, tile_size))
     grid.append(row)
 
+amnt_of_biomes_to_change = math.ceil(cols * rows * 0.7)
+biomes_to_change = random.sample(range(cols * rows), amnt_of_biomes_to_change)
+
+total = 0
+for i in range(0,16):
+    region_rows = rows // 4
+    region_cols = cols // 4
+    for r in range(4):       # region row (0–3)
+        for c in range(4):   # region col (0–3)
+                    # Example biases
+            
+            random_to_change = random.randint(0,2)
+            for y in range(r * region_rows, (r + 1) * region_rows):
+                for x in range(c * region_cols, (c + 1) * region_cols):
+                    
+                    tile = grid[y][x]
+
+                    tile.change_stat(random_to_change)
+
+                    # clamp values (IMPORTANT)
+                    tile.food_regen = max(0.1, min(1.0, tile.food_regen))
+                    tile.fertility = max(0.1, min(1.0, tile.fertility))
+                    tile.roughness = max(0.0, min(1.0, tile.roughness))
+
+                    # update stats list
+                    tile.stats = [tile.food_regen, tile.fertility, tile.roughness]
+
+                    # recalc colour
+                    if tile.roughness > 0.7:
+                        tile.colour = (120, 120, 120)
+                    elif tile.fertility < 0.4:
+                        tile.colour = (210, 180, 80)
+                    elif tile.food_regen > 0.6:
+                        tile.colour = (80, 180, 80)
+                    else:
+                        tile.colour = (70, 130, 180)
+for i in range(amnt_of_biomes_to_change):
+    index = biomes_to_change[i]
+    
+    row_i = index // cols
+    col_i = index % cols
+
+    if 0 < row_i < rows - 1 and 0 < col_i < cols - 1:
+        total = np.zeros(3)
+        avg = np.zeros(3)
+        for dy in range(-1, 2):   # -1, 0, 1
+            for dx in range(-1, 2):
+                for m in range(0,3):
+                    total[m] += grid[row_i + dy][col_i + dx].stats[m]  # pick stat index
+        for n in range(0,3):
+            avg[n] = total[n] / 9
+
+        # Apply averaged stats
+        tile = grid[row_i][col_i]
+        tile.food_regen = avg[0]
+        tile.fertility = avg[1]
+        tile.roughness = avg[2]
+
+        # 🔥 IMPORTANT: update stats list
+        tile.stats = [tile.food_regen, tile.fertility, tile.roughness]
+
+        # 🔥 IMPORTANT: recalculate colour
+        if tile.roughness > 0.7:
+            tile.colour = (120, 120, 120)  # mountains
+        elif tile.fertility < 0.4:
+            tile.colour = (210, 180, 80)   # desert
+        elif tile.food_regen > 0.6:
+            tile.colour = (80, 180, 80)    # plains
+        else:
+            tile.colour = (70, 130, 180)   # water
 
 class Food:
     def __init__(self, x, y, size, type):
@@ -506,12 +604,8 @@ while running:
     screen.fill((30, 30, 30))
     for row in grid:
         for tile in row:
-            color = (
-                int(tile.fertility * 255),
-                int(tile.food_regen * 255),
-                int(tile.roughness * 255)
-            )
-            pygame.draw.rect(screen, color, (tile.x, tile.y, tile.size, tile.size))
+            
+            pygame.draw.rect(screen, tile.colour, (tile.x, tile.y, tile.size, tile.size))
     for predator in predator_list:
         pcx, pcy = predator.x + (predator.size // 2), predator.y + (predator.size // 2)
         if predator.alive:
