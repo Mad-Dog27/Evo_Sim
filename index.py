@@ -23,6 +23,7 @@ init_pop = 5
 fam_trees = np.ones(init_pop)
 colour_list = []
 
+diet_types = ["herbivore", "omnivore", "carnivore"]
 pygame.display.set_caption("Manual Control Mode")
 
 class Food:
@@ -43,7 +44,7 @@ class Character:
 
 class Moving_Creature:
 
-    def __init__(self, x, y, size, speed, vision, fam_tree, colour):
+    def __init__(self, x, y, size, speed, vision, fam_tree, colour, diet):
         self.x = x
         self.y = y
         self.size = size
@@ -69,6 +70,8 @@ class Moving_Creature:
         self.horny = 0.5
         self.baby_amount = 1
         self.repro_timer = 0
+
+        self.diet = diet
         
     def update_view(self, view_w, view_h):
         self.view_w = view_w
@@ -118,32 +121,33 @@ def draw_rotated_ellipse(surface, color, center, w, h, angle):
 
 
 def checkColision(this_creature):
-    for m in range(len(food_list) - 1, -1, -1):
-        curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
-        curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
-        distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
-        if distance < (this_creature.size // 2): 
-            this_creature.hunger += food_list[m].qnty
-            if this_creature.hunger > 100:
-                this_creature.hunger = 100
-            food_list.pop(m)
-    
-    for other in predator_list:
-        if other != this_creature:
-            dx = other.x - this_creature.x
-            dy = other.y - this_creature.y
-            dist = math.sqrt(dx**2 + dy**2)
+    if this_creature.diet != "carnivore":
+        for m in range(len(food_list) - 1, -1, -1):
+            curr_x_diff = (food_list[m].x + (food_list[m].size // 2)) - cx
+            curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
+            distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
+            if distance < (this_creature.size // 2): 
+                this_creature.hunger += food_list[m].qnty
+                if this_creature.hunger > 100:
+                    this_creature.hunger = 100
+                food_list.pop(m)
+    if this_creature.diet != "herbivore":
+        for other in predator_list:
+            if other != this_creature:
+                dx = other.x - this_creature.x
+                dy = other.y - this_creature.y
+                dist = math.sqrt(dx**2 + dy**2)
 
-            if dist < this_creature.size:
-                if this_creature.size > other.size:
-                    other.alive = 0
-                    if this_creature.hunger < this_creature.greed *100:
-                        predator_list.remove(other)
-                        this_creature.hunger += 50
-                    else:
-                        new_food = Food(other.x, other.y, other.size, "creature")
-                        food_list.append(new_food)
-                        predator_list.remove(other)
+                if dist < this_creature.size:
+                    if this_creature.size > other.size:
+                        other.alive = 0
+                        if this_creature.hunger < this_creature.greed *100:
+                            predator_list.remove(other)
+                            this_creature.hunger += 50
+                        else:
+                            new_food = Food(other.x, other.y, other.size, "creature")
+                            food_list.append(new_food)
+                            predator_list.remove(other)
                     
 
 def hunt(this_creature):
@@ -176,9 +180,11 @@ def hunt(this_creature):
     target = None
 
     if creature_index is not None: # stores [0,1] being "type" and index
-        target = ("creature", creature_index)
+        if this_creature.diet == "omnivore" or this_creature.diet == "carnivore":
+            target = ("creature", creature_index)
     elif food_index is not None:
-        target = ("food", food_index)
+        if this_creature.diet == "omivore" or this_creature.diet == "herbivore":
+            target = ("food", food_index)
 
     # --- MOVE TOWARD TARGET ---
     if target is not None:
@@ -323,7 +329,7 @@ def reset_game(speed, size):
     food_list = []
     predator_list = []
     stats = []
-    fam_trees = [1, 1, 1]
+    fam_trees = np.ones(init_pop)
     for i in range(random.randint(26, 30)):
         new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3, "food")
         food_list.append(new_food)
@@ -332,7 +338,9 @@ def reset_game(speed, size):
         #, x, y, size, speed, vision
     for i in range(init_pop):
         colour = random_colour()
-        new_predator = Moving_Creature(random_pos()[0], random_pos()[1], size, speed, [60, 40], i, colour)
+        diet_index = random.randint(0,2)
+        diet = diet_types[diet_index]
+        new_predator = Moving_Creature(random_pos()[0], random_pos()[1], size, speed, [60, 40], i, colour, diet)
         randomizeStats(new_predator)
         predator_list.append(new_predator)
         colour_list.append(colour)
@@ -371,7 +379,8 @@ def make_clone(this_creature):
         this_creature.speed,
         this_creature.vision[:],  # copy vision list
         this_creature.family_tree,
-        this_creature.colour
+        this_creature.colour,
+        this_creature.diet
     )
 
     # 5. Apply mutated stats
