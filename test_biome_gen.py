@@ -45,6 +45,12 @@ class Tile:
         self.stats = stats
         self.colour = (0, 0, 0)
         self.type = "generic"
+        self.z = (0.00000005 * (x**3 - 3*x*y**2) +   # scaled down heavily for big coords
+        0.8 * np.sin(0.01 * x) +
+        0.8 * np.cos(0.01 * y) +
+        0.5 * np.sin(0.01 * x * y) -
+        0.000001 * (x**2 + y**2))
+        self.update_colour()
     def change_stat(self, stat_to_change):
         self.stats[stat_to_change] *=random.uniform(0.5, 1.5)
         self.stats[stat_to_change] = max(0.1, min(1.0, self.stats[stat_to_change]))
@@ -56,24 +62,24 @@ class Tile:
         self.update_colour()
     def update_colour(self):
                 # recalc colour
-        if self.roughness > 0.7:
+        if self.z > 5:
             self.colour = (120, 120, 120)
-        elif self.fertility < 0.4:
-            self.colour = (210, 180, 80)
-        elif self.food_regen > 0.6:
-            self.colour = (80, 180, 80)
-        else:
+            self.type = "mountains"
+        elif self.z < -10:
             self.colour = (70, 130, 180)
+            self.type = "water"
+        elif self.z > -5:
+            self.colour = (80, 180, 80)
+            self.type = "plains"
+        else:
+            self.colour = (210, 180, 80)
+            self.type = "desert"
+
+
 def create_tile_from_stats(x, y, size, stats):
-    food_regen, fertility, roughness = stats
-    if roughness > 0.7:
-        return MountainTile(x, y, size, stats)
-    elif fertility < 0.4:
-        return DesertTile(x, y, size, stats)
-    elif food_regen > 0.6:
-        return PlainsTile(x, y, size, stats)
-    else:
-        return WaterTile(x, y, size, stats)
+    tile = Tile(x, y, size, stats)
+    tile.update_colour()
+    return tile
 
 def create_tile(x, y, size):
     # Just a wrapper for the first time generation
@@ -269,7 +275,7 @@ for i in range(rows*cols):
         grid[row_i][col_i] = create_tile_from_stats(tile.x, tile.y, tile.size, tile.stats)
 
 
-make_random_blobs(4, "mountains", 4)
+#make_random_blobs(4, "mountains", 4)
 
 class Food:
     def __init__(self, x, y, size, type):
@@ -371,11 +377,20 @@ def checkColision(this_creature):
         curr_y_diff = (food_list[m].y + (food_list[m].size // 2)) - cy
         distance = math.sqrt(curr_x_diff**2 + curr_y_diff**2)
         if this_creature.diet != "carnivore":
-            if distance < (this_creature.size // 2): 
-                this_creature.hunger += food_list[m].qnty
-                if this_creature.hunger > 100:
-                    this_creature.hunger = 100
-                food_list.pop(m)
+            if food_list[m].type == "creature":
+                if this_creature.diet != "herbivore":
+                    if distance < (this_creature.size // 2): 
+                        this_creature.hunger += food_list[m].qnty
+                        if this_creature.hunger > 100:
+                            this_creature.hunger = 100
+                        food_list.pop(m)
+            else:
+                if distance < (this_creature.size // 2): 
+                    this_creature.hunger += food_list[m].qnty
+                    if this_creature.hunger > 100:
+                        this_creature.hunger = 100
+                    food_list.pop(m)
+                
         else:
             if food_list[m].type == "creature":
                 if distance < (this_creature.size // 2): 
@@ -391,7 +406,7 @@ def checkColision(this_creature):
                 dist = math.sqrt(dx**2 + dy**2)
 
                 if dist < this_creature.size:
-                    if this_creature.size > other.size:
+                    if this_creature.size >= other.size:
                         other.alive = 0
                         if this_creature.hunger < this_creature.greed *100:
                             predator_list.remove(other)
@@ -436,9 +451,10 @@ def hunt(this_creature, cx, cy):
             target = ("creature", creature_index)
     elif food_index is not None:
         if this_creature.diet == "omnivore" or this_creature.diet == "herbivore" or this_creature.diet == "carnivore":
-            if this_creature.diet != "carnivore":
+            if this_creature.diet == "carnivore" or this_creature.diet == "omnivore":
                 target = ("food", food_index)
-            elif food_list[food_index].type == "creature":
+                
+            elif food_list[food_index].type == "food":
                 target = ("food", food_index)
 
     # --- MOVE TOWARD TARGET ---
@@ -453,7 +469,7 @@ def hunt(this_creature, cx, cy):
 
         angle = math.atan2(y_dif, x_dif)
         if target[0] == "creature":
-            if predator_list[target[1]].size > this_creature.size: #other is larger and thus may eat this creature
+            if predator_list[target[1]].size >= this_creature.size: #other is larger and thus may eat this creature
                 angle += math.pi
         this_creature.angle = angle
 
@@ -686,7 +702,7 @@ while running:
             running = False
         # Logic to reset when food is gone OR creature dies
     tick += 1
-    if tick >50:
+    if tick >10:
         new_food = Food(random.uniform(0, width-10), random.uniform(0, height-10), 3, "food")
         food_list.append(new_food)
         tick = 0
