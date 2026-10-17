@@ -2,6 +2,8 @@ import pygame
 import random
 import math
 import numpy as np
+
+from ai import ai
 pygame.init()
 width, height = 800, 600
 screen = pygame.display.set_mode((width, height))
@@ -35,9 +37,10 @@ rows = height // tile_size
 grid = []
 
 biome_colours = [(120, 120, 120), (210, 180, 80), (80, 180, 80),(70, 130, 180)]
-
-
-
+print(biome_colours)
+#my_ai = ai("myai")
+#print(my_ai.firstNum)
+#print(my_ai.firstNumList[1].value)
 class Tile:
     def __init__(self, x, y, size, stats):
         self.x, self.y, self.size = x, y, size
